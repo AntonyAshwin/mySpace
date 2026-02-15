@@ -17,10 +17,13 @@ const STAR_COUNT = (spec?.tunables?.starCount as number) ?? 500;
 const STAR_RADIUS = (spec?.tunables?.starRadius as number) ?? 1.2;
 const CLICK_THRESHOLD = (spec?.tunables?.clickThresholdPx as number) ?? 8; // px
 const STARFIELD_SEED = (spec?.tunables?.starfieldSeed as number) ?? 123456789;
+const HOVER_THRESHOLD = 14; // px distance to show highlight
+const HOVER_RING_RADIUS = 10; // px ring around the star
 
 export default function StarField({ onSelect }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [stars, setStars] = useState<Star[]>([]);
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -51,6 +54,7 @@ export default function StarField({ onSelect }: Props) {
     };
 
     const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#ffffff';
@@ -58,6 +62,16 @@ export default function StarField({ onSelect }: Props) {
         ctx.beginPath();
         ctx.arc(s.x, s.y, STAR_RADIUS, 0, Math.PI * 2);
         ctx.fill();
+      }
+      if (hoveredId !== null) {
+        const hs = stars[hoveredId];
+        if (hs) {
+          ctx.strokeStyle = '#00ff66';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(hs.x, hs.y, HOVER_RING_RADIUS, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       }
     };
 
@@ -73,15 +87,29 @@ export default function StarField({ onSelect }: Props) {
     const dpr = window.devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     // Redraw when stars update
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#ffffff';
-    for (const s of stars) {
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, STAR_RADIUS, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }, [stars]);
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffffff';
+      for (const s of stars) {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, STAR_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (hoveredId !== null) {
+        const hs = stars[hoveredId];
+        if (hs) {
+          ctx.strokeStyle = '#00ff66';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(hs.x, hs.y, HOVER_RING_RADIUS, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    };
+    draw();
+  }, [stars, hoveredId]);
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
@@ -98,9 +126,43 @@ export default function StarField({ onSelect }: Props) {
         nearest = s;
       }
     }
+    // If a star is highlighted, select it even if slightly outside default threshold
+    if (hoveredId !== null) {
+      const hs = stars[hoveredId];
+      if (hs) {
+        onSelect(hs, { x: hs.x, y: hs.y });
+        return;
+      }
+    }
     if (nearest && nearestDist <= CLICK_THRESHOLD) {
       onSelect(nearest, { x, y });
     }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    let nearestId: number | null = null;
+    let nearestDist = Infinity;
+    for (const s of stars) {
+      const dx = s.x - x;
+      const dy = s.y - y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestId = s.id;
+      }
+    }
+    if (nearestId !== null && nearestDist <= HOVER_THRESHOLD) {
+      if (hoveredId !== nearestId) setHoveredId(nearestId);
+    } else if (hoveredId !== null) {
+      setHoveredId(null);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (hoveredId !== null) setHoveredId(null);
   };
 
   return (
@@ -108,6 +170,8 @@ export default function StarField({ onSelect }: Props) {
       ref={canvasRef}
       className="starfield"
       onClick={handleClick}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
       aria-label="Starfield"
     />
   );

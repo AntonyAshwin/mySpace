@@ -1,0 +1,54 @@
+{
+  "version": "1.0.0",
+  "modules": {
+    "App": "src/App.tsx",
+    "StarField": "src/components/StarField.tsx",
+    "Modal": "src/components/Modal.tsx",
+    "PlanetCanvas": "src/components/PlanetCanvas.tsx",
+    "Procedural": "src/lib/procedural.ts",
+    "Random": "src/lib/random.ts",
+    "Styles": "src/styles.css"
+  },
+  "tunables": {
+    "starCount": 500,
+    "starRadius": 1.2,
+    "clickThresholdPx": 8,
+    "zoomDurationMs": 250,
+    "planet": {
+      "ringChance": 0.35,
+      "noiseScaleDefault": 0.008,
+      "bandingRange": [0.0, 1.0],
+      "cloudsRange": [0.0, 0.7],
+      "oceanRange": [0.0, 0.6],
+      "ringTiltRangeDeg": [-35, 35],
+      "typeDistribution": { "gaseous": 0.8, "rocky": 0.2 },
+      "rotationAnticlockwiseProbability": 0.95,
+      "rotationSpeedRangeRadPerFrame": [0.006, 0.016],
+      "terrain": {
+        "fbmOctaves": 5,
+        "baseScale": 0.006,
+        "oceanThresholdBase": 0.5,
+        "oceanThresholdOceanFactor": 0.25
+      }
+    }
+  },
+  "behaviors": [
+    "Black background with small white stars.",
+    "Tap near a star zooms to circular overlay.",
+    "Zoom overlay covers viewport and triggers PlanetView.",
+    "Planet is procedurally generated; visuals depend on seed.",
+    "Tap black background to return to starfield."
+  ],
+  "changePolicy": {
+    "allow": [
+      "Adjust tunables for UX/performance",
+      "Refactor internals without changing public props/types",
+      "Improve rendering quality within performance budget"
+    ],
+    "disallow": [
+      "Breaking public prop types without version bump",
+      "Removing required behaviors",
+      "Introducing heavy runtime dependencies without justification"
+    ]
+  }
+}

@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { mulberry32 } from '../lib/random';
+import spec from '../agent-spec.json';
 
 export type Star = {
   id: number;
@@ -11,9 +13,10 @@ type Props = {
   onSelect: (star: Star, origin: { x: number; y: number }) => void;
 };
 
-const STAR_COUNT = 500;
-const STAR_RADIUS = 1.2;
-const CLICK_THRESHOLD = 8; // px
+const STAR_COUNT = (spec?.tunables?.starCount as number) ?? 500;
+const STAR_RADIUS = (spec?.tunables?.starRadius as number) ?? 1.2;
+const CLICK_THRESHOLD = (spec?.tunables?.clickThresholdPx as number) ?? 8; // px
+const STARFIELD_SEED = (spec?.tunables?.starfieldSeed as number) ?? 123456789;
 
 export default function StarField({ onSelect }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -35,12 +38,13 @@ export default function StarField({ onSelect }: Props) {
 
     const createStars = () => {
       const list: Star[] = [];
+      const rng = mulberry32(STARFIELD_SEED);
       for (let i = 0; i < STAR_COUNT; i++) {
         list.push({
           id: i,
-          x: Math.random() * window.innerWidth,
-          y: Math.random() * window.innerHeight,
-          seed: Math.floor(Math.random() * 1e9),
+          x: rng() * window.innerWidth,
+          y: rng() * window.innerHeight,
+          seed: Math.floor(rng() * 1e9),
         });
       }
       setStars(list);

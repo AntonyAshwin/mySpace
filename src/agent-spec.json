@@ -10,6 +10,7 @@
     "Styles": "src/styles.css"
   },
   "tunables": {
+    "starfieldSeed": 123456789,
     "starCount": 500,
     "starRadius": 1.2,
     "clickThresholdPx": 8,

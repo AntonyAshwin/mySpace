@@ -33,6 +33,36 @@ html, body, #root {
   cursor: crosshair;
 }
 
+.starfield-container {
+  position: absolute;
+  inset: 0;
+}
+
+.zoom-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+  user-select: none;
+}
+
+.zoom-btn {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+.zoom-btn:hover {
+  background: rgba(255,255,255,0.2);
+}
+
 /* Modal */
 .modal-backdrop {
   position: absolute;

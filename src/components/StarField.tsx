@@ -19,11 +19,19 @@ const CLICK_THRESHOLD = (spec?.tunables?.clickThresholdPx as number) ?? 8; // px
 const STARFIELD_SEED = (spec?.tunables?.starfieldSeed as number) ?? 123456789;
 const HOVER_THRESHOLD = 14; // px distance to show highlight
 const HOVER_RING_RADIUS = 10; // px ring around the star
+const WORLD_SIZE = (spec?.tunables?.spaceWorldSize as number) ?? 6000; // virtual square space in px units
+const INITIAL_ZOOM = (spec?.tunables?.initialZoom as number) ?? 1.0;
+const MIN_ZOOM = (spec?.tunables?.minZoom as number) ?? 0.5;
+const MAX_ZOOM = (spec?.tunables?.maxZoom as number) ?? 4.0;
+const ZOOM_SPEED = (spec?.tunables?.zoomSpeed as number) ?? 0.12; // wheel zoom sensitivity
 
 export default function StarField({ onSelect }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [stars, setStars] = useState<Star[]>([]);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const [scale, setScale] = useState<number>(INITIAL_ZOOM);
+  const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const draggingRef = useRef<{ dragging: boolean; lastX: number; lastY: number }>({ dragging: false, lastX: 0, lastY: 0 });
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -36,6 +44,14 @@ export default function StarField({ onSelect }: Props) {
       canvas.style.width = `${window.innerWidth}px`;
       canvas.style.height = `${window.innerHeight}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Center the view on the middle of the world
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
+      const newOffset = {
+        x: WORLD_SIZE / 2 - screenW / (2 * scale),
+        y: WORLD_SIZE / 2 - screenH / (2 * scale),
+      };
+      setOffset(clampOffset(newOffset, scale, screenW, screenH));
       draw();
     };
 
@@ -45,8 +61,8 @@ export default function StarField({ onSelect }: Props) {
       for (let i = 0; i < STAR_COUNT; i++) {
         list.push({
           id: i,
-          x: rng() * window.innerWidth,
-          y: rng() * window.innerHeight,
+          x: rng() * WORLD_SIZE,
+          y: rng() * WORLD_SIZE,
           seed: Math.floor(rng() * 1e9),
         });
       }
@@ -58,18 +74,25 @@ export default function StarField({ onSelect }: Props) {
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#ffffff';
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
       for (const s of stars) {
+        const sx = (s.x - offset.x) * scale;
+        const sy = (s.y - offset.y) * scale;
+        if (sx < -20 || sy < -20 || sx > screenW + 20 || sy > screenH + 20) continue; // cull off-screen
         ctx.beginPath();
-        ctx.arc(s.x, s.y, STAR_RADIUS, 0, Math.PI * 2);
+        ctx.arc(sx, sy, STAR_RADIUS, 0, Math.PI * 2);
         ctx.fill();
       }
       if (hoveredId !== null) {
         const hs = stars[hoveredId];
         if (hs) {
+          const hx = (hs.x - offset.x) * scale;
+          const hy = (hs.y - offset.y) * scale;
           ctx.strokeStyle = '#00ff66';
           ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.arc(hs.x, hs.y, HOVER_RING_RADIUS, 0, Math.PI * 2);
+          ctx.arc(hx, hy, HOVER_RING_RADIUS, 0, Math.PI * 2);
           ctx.stroke();
         }
       }
@@ -92,24 +115,31 @@ export default function StarField({ onSelect }: Props) {
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#ffffff';
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
       for (const s of stars) {
+        const sx = (s.x - offset.x) * scale;
+        const sy = (s.y - offset.y) * scale;
+        if (sx < -20 || sy < -20 || sx > screenW + 20 || sy > screenH + 20) continue;
         ctx.beginPath();
-        ctx.arc(s.x, s.y, STAR_RADIUS, 0, Math.PI * 2);
+        ctx.arc(sx, sy, STAR_RADIUS, 0, Math.PI * 2);
         ctx.fill();
       }
       if (hoveredId !== null) {
         const hs = stars[hoveredId];
         if (hs) {
+          const hx = (hs.x - offset.x) * scale;
+          const hy = (hs.y - offset.y) * scale;
           ctx.strokeStyle = '#00ff66';
           ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.arc(hs.x, hs.y, HOVER_RING_RADIUS, 0, Math.PI * 2);
+          ctx.arc(hx, hy, HOVER_RING_RADIUS, 0, Math.PI * 2);
           ctx.stroke();
         }
       }
     };
     draw();
-  }, [stars, hoveredId]);
+  }, [stars, hoveredId, scale, offset]);
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
@@ -118,8 +148,10 @@ export default function StarField({ onSelect }: Props) {
     let nearest: Star | null = null;
     let nearestDist = Infinity;
     for (const s of stars) {
-      const dx = s.x - x;
-      const dy = s.y - y;
+      const sx = (s.x - offset.x) * scale;
+      const sy = (s.y - offset.y) * scale;
+      const dx = sx - x;
+      const dy = sy - y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist < nearestDist) {
         nearestDist = dist;
@@ -130,7 +162,9 @@ export default function StarField({ onSelect }: Props) {
     if (hoveredId !== null) {
       const hs = stars[hoveredId];
       if (hs) {
-        onSelect(hs, { x: hs.x, y: hs.y });
+        const hx = (hs.x - offset.x) * scale;
+        const hy = (hs.y - offset.y) * scale;
+        onSelect(hs, { x: hx, y: hy });
         return;
       }
     }
@@ -143,11 +177,27 @@ export default function StarField({ onSelect }: Props) {
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    if (draggingRef.current.dragging) {
+      const dx = e.clientX - draggingRef.current.lastX;
+      const dy = e.clientY - draggingRef.current.lastY;
+      draggingRef.current.lastX = e.clientX;
+      draggingRef.current.lastY = e.clientY;
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
+      const newOffset = {
+        x: offset.x - dx / scale,
+        y: offset.y - dy / scale,
+      };
+      setOffset(clampOffset(newOffset, scale, screenW, screenH));
+      return;
+    }
     let nearestId: number | null = null;
     let nearestDist = Infinity;
     for (const s of stars) {
-      const dx = s.x - x;
-      const dy = s.y - y;
+      const sx = (s.x - offset.x) * scale;
+      const sy = (s.y - offset.y) * scale;
+      const dx = sx - x;
+      const dy = sy - y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist < nearestDist) {
         nearestDist = dist;
@@ -165,14 +215,81 @@ export default function StarField({ onSelect }: Props) {
     if (hoveredId !== null) setHoveredId(null);
   };
 
+  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const direction = e.deltaY < 0 ? 1 : -1;
+    const targetScale = clamp(scale * (1 + direction * ZOOM_SPEED), MIN_ZOOM, MAX_ZOOM);
+    // Keep the cursor world point fixed under the cursor when zooming
+    const wx = x / scale + offset.x;
+    const wy = y / scale + offset.y;
+    const newOffset = {
+      x: wx - x / targetScale,
+      y: wy - y / targetScale,
+    };
+    const screenW = window.innerWidth;
+    const screenH = window.innerHeight;
+    setScale(targetScale);
+    setOffset(clampOffset(newOffset, targetScale, screenW, screenH));
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    draggingRef.current.dragging = true;
+    draggingRef.current.lastX = e.clientX;
+    draggingRef.current.lastY = e.clientY;
+  };
+
+  const handleMouseUp = () => {
+    draggingRef.current.dragging = false;
+  };
+
+  function clamp(value: number, min: number, max: number) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function clampOffset(off: { x: number; y: number }, sc: number, screenW: number, screenH: number) {
+    const maxX = Math.max(0, WORLD_SIZE - screenW / sc);
+    const maxY = Math.max(0, WORLD_SIZE - screenH / sc);
+    return {
+      x: clamp(off.x, 0, maxX),
+      y: clamp(off.y, 0, maxY),
+    };
+  }
+
+  const zoomByButtons = (direction: 1 | -1) => {
+    const screenW = window.innerWidth;
+    const screenH = window.innerHeight;
+    const targetScale = clamp(scale * (1 + direction * ZOOM_SPEED), MIN_ZOOM, MAX_ZOOM);
+    const wx = screenW / (2 * scale) + offset.x;
+    const wy = screenH / (2 * scale) + offset.y;
+    const newOffset = {
+      x: wx - screenW / (2 * targetScale),
+      y: wy - screenH / (2 * targetScale),
+    };
+    setScale(targetScale);
+    setOffset(clampOffset(newOffset, targetScale, screenW, screenH));
+  };
+
   return (
-    <canvas
-      ref={canvasRef}
-      className="starfield"
-      onClick={handleClick}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      aria-label="Starfield"
-    />
+    <div className="starfield-container">
+      <canvas
+        ref={canvasRef}
+        className="starfield"
+        onClick={handleClick}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onMouseOut={handleMouseUp}
+        aria-label="Starfield"
+      />
+      <div className="zoom-controls" aria-label="Zoom controls">
+        <button className="zoom-btn" onClick={() => zoomByButtons(1)} aria-label="Zoom in">＋</button>
+        <button className="zoom-btn" onClick={() => zoomByButtons(-1)} aria-label="Zoom out">－</button>
+      </div>
+    </div>
   );
 }

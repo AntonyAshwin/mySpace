@@ -14,6 +14,11 @@
     "starCount": 500,
     "starRadius": 1.2,
     "clickThresholdPx": 8,
+    "spaceWorldSize": 6000,
+    "initialZoom": 1.0,
+    "minZoom": 0.5,
+    "maxZoom": 4.0,
+    "zoomSpeed": 0.12,
     "zoomDurationMs": 250,
     "planet": {
       "ringChance": 0.35,

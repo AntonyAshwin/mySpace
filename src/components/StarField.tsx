@@ -20,18 +20,51 @@ const STARFIELD_SEED = (spec?.tunables?.starfieldSeed as number) ?? 123456789;
 const HOVER_THRESHOLD = 14; // px distance to show highlight
 const HOVER_RING_RADIUS = 10; // px ring around the star
 const WORLD_SIZE = (spec?.tunables?.spaceWorldSize as number) ?? 6000; // virtual square space in px units
-const INITIAL_ZOOM = (spec?.tunables?.initialZoom as number) ?? 1.0;
+const INITIAL_ZOOM = (spec?.tunables?.initialZoom as number) ?? 0.5;
 const MIN_ZOOM = (spec?.tunables?.minZoom as number) ?? 0.5;
 const MAX_ZOOM = (spec?.tunables?.maxZoom as number) ?? 4.0;
 const ZOOM_SPEED = (spec?.tunables?.zoomSpeed as number) ?? 0.12; // wheel zoom sensitivity
+const TILE_SIZE = (spec?.tunables?.tileSize as number) ?? 800; // world units per tile
+const STARS_PER_TILE = (spec?.tunables?.starsPerTile as number) ?? 80;
 
 export default function StarField({ onSelect }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [stars, setStars] = useState<Star[]>([]);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
-  const [scale, setScale] = useState<number>(INITIAL_ZOOM);
+  const [hoveredStar, setHoveredStar] = useState<Star | null>(null);
+  const [scale, setScale] = useState<number>(MIN_ZOOM);
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const draggingRef = useRef<{ dragging: boolean; lastX: number; lastY: number }>({ dragging: false, lastX: 0, lastY: 0 });
+
+  // Procedural infinite stars: generate per tile deterministically
+  const tileSeed = (tx: number, ty: number) => ((STARFIELD_SEED ^ (tx * 0x9e3779b1) ^ (ty * 0x85ebca77)) >>> 0);
+
+  const generateTileStars = (tx: number, ty: number): Star[] => {
+    const rng = mulberry32(tileSeed(tx, ty));
+    const list: Star[] = [];
+    for (let i = 0; i < STARS_PER_TILE; i++) {
+      const x = tx * TILE_SIZE + rng() * TILE_SIZE;
+      const y = ty * TILE_SIZE + rng() * TILE_SIZE;
+      list.push({ id: ((tx << 16) ^ ty ^ i) >>> 0, x, y, seed: Math.floor(rng() * 1e9) });
+    }
+    return list;
+  };
+
+  const forVisibleTiles = (fn: (tx: number, ty: number) => void) => {
+    const screenW = window.innerWidth;
+    const screenH = window.innerHeight;
+    const vx0 = offset.x;
+    const vy0 = offset.y;
+    const vx1 = offset.x + screenW / scale;
+    const vy1 = offset.y + screenH / scale;
+    const tx0 = Math.floor(vx0 / TILE_SIZE) - 1;
+    const ty0 = Math.floor(vy0 / TILE_SIZE) - 1;
+    const tx1 = Math.floor(vx1 / TILE_SIZE) + 1;
+    const ty1 = Math.floor(vy1 / TILE_SIZE) + 1;
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) fn(tx, ty);
+    }
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -44,29 +77,9 @@ export default function StarField({ onSelect }: Props) {
       canvas.style.width = `${window.innerWidth}px`;
       canvas.style.height = `${window.innerHeight}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      // Center the view on the middle of the world
-      const screenW = window.innerWidth;
-      const screenH = window.innerHeight;
-      const newOffset = {
-        x: WORLD_SIZE / 2 - screenW / (2 * scale),
-        y: WORLD_SIZE / 2 - screenH / (2 * scale),
-      };
-      setOffset(clampOffset(newOffset, scale, screenW, screenH));
+      // Initialize view; infinite world so start at origin
+      setOffset({ x: 0, y: 0 });
       draw();
-    };
-
-    const createStars = () => {
-      const list: Star[] = [];
-      const rng = mulberry32(STARFIELD_SEED);
-      for (let i = 0; i < STAR_COUNT; i++) {
-        list.push({
-          id: i,
-          x: rng() * WORLD_SIZE,
-          y: rng() * WORLD_SIZE,
-          seed: Math.floor(rng() * 1e9),
-        });
-      }
-      setStars(list);
     };
 
     const draw = () => {
@@ -76,29 +89,20 @@ export default function StarField({ onSelect }: Props) {
       ctx.fillStyle = '#ffffff';
       const screenW = window.innerWidth;
       const screenH = window.innerHeight;
-      for (const s of stars) {
-        const sx = (s.x - offset.x) * scale;
-        const sy = (s.y - offset.y) * scale;
-        if (sx < -20 || sy < -20 || sx > screenW + 20 || sy > screenH + 20) continue; // cull off-screen
-        ctx.beginPath();
-        ctx.arc(sx, sy, STAR_RADIUS, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      if (hoveredId !== null) {
-        const hs = stars[hoveredId];
-        if (hs) {
-          const hx = (hs.x - offset.x) * scale;
-          const hy = (hs.y - offset.y) * scale;
-          ctx.strokeStyle = '#00ff66';
-          ctx.lineWidth = 1.5;
+      forVisibleTiles((tx, ty) => {
+        const tileStars = generateTileStars(tx, ty);
+        for (const s of tileStars) {
+          const sx = (s.x - offset.x) * scale;
+          const sy = (s.y - offset.y) * scale;
+          if (sx < -20 || sy < -20 || sx > screenW + 20 || sy > screenH + 20) return;
           ctx.beginPath();
-          ctx.arc(hx, hy, HOVER_RING_RADIUS, 0, Math.PI * 2);
-          ctx.stroke();
+          ctx.arc(sx, sy, STAR_RADIUS, 0, Math.PI * 2);
+          ctx.fill();
         }
-      }
+      });
+      // Hover ring is drawn in the secondary redraw effect using hoveredStar.
     };
 
-    createStars();
     resize();
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
@@ -109,7 +113,6 @@ export default function StarField({ onSelect }: Props) {
     const ctx = canvas.getContext('2d')!;
     const dpr = window.devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // Redraw when stars update
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#000000';
@@ -117,29 +120,29 @@ export default function StarField({ onSelect }: Props) {
       ctx.fillStyle = '#ffffff';
       const screenW = window.innerWidth;
       const screenH = window.innerHeight;
-      for (const s of stars) {
-        const sx = (s.x - offset.x) * scale;
-        const sy = (s.y - offset.y) * scale;
-        if (sx < -20 || sy < -20 || sx > screenW + 20 || sy > screenH + 20) continue;
-        ctx.beginPath();
-        ctx.arc(sx, sy, STAR_RADIUS, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      if (hoveredId !== null) {
-        const hs = stars[hoveredId];
-        if (hs) {
-          const hx = (hs.x - offset.x) * scale;
-          const hy = (hs.y - offset.y) * scale;
-          ctx.strokeStyle = '#00ff66';
-          ctx.lineWidth = 1.5;
+      forVisibleTiles((tx, ty) => {
+        const tileStars = generateTileStars(tx, ty);
+        for (const s of tileStars) {
+          const sx = (s.x - offset.x) * scale;
+          const sy = (s.y - offset.y) * scale;
+          if (sx < -20 || sy < -20 || sx > screenW + 20 || sy > screenH + 20) return;
           ctx.beginPath();
-          ctx.arc(hx, hy, HOVER_RING_RADIUS, 0, Math.PI * 2);
-          ctx.stroke();
+          ctx.arc(sx, sy, STAR_RADIUS, 0, Math.PI * 2);
+          ctx.fill();
         }
+      });
+      if (hoveredStar) {
+        const hx = (hoveredStar.x - offset.x) * scale;
+        const hy = (hoveredStar.y - offset.y) * scale;
+        ctx.strokeStyle = '#00ff66';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(hx, hy, HOVER_RING_RADIUS, 0, Math.PI * 2);
+        ctx.stroke();
       }
     };
     draw();
-  }, [stars, hoveredId, scale, offset]);
+  }, [hoveredStar, scale, offset]);
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
@@ -147,26 +150,32 @@ export default function StarField({ onSelect }: Props) {
     const y = e.clientY - rect.top;
     let nearest: Star | null = null;
     let nearestDist = Infinity;
-    for (const s of stars) {
-      const sx = (s.x - offset.x) * scale;
-      const sy = (s.y - offset.y) * scale;
-      const dx = sx - x;
-      const dy = sy - y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearest = s;
+    const wx = x / scale + offset.x;
+    const wy = y / scale + offset.y;
+    const cx = Math.floor(wx / TILE_SIZE);
+    const cy = Math.floor(wy / TILE_SIZE);
+    for (let ty = cy - 1; ty <= cy + 1; ty++) {
+      for (let tx = cx - 1; tx <= cx + 1; tx++) {
+        const tileStars = generateTileStars(tx, ty);
+        for (const s of tileStars) {
+          const sx = (s.x - offset.x) * scale;
+          const sy = (s.y - offset.y) * scale;
+          const dx = sx - x;
+          const dy = sy - y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < nearestDist) {
+            nearestDist = dist;
+            nearest = s;
+          }
+        }
       }
     }
     // If a star is highlighted, select it even if slightly outside default threshold
-    if (hoveredId !== null) {
-      const hs = stars[hoveredId];
-      if (hs) {
-        const hx = (hs.x - offset.x) * scale;
-        const hy = (hs.y - offset.y) * scale;
-        onSelect(hs, { x: hx, y: hy });
-        return;
-      }
+    if (hoveredStar) {
+      const hx = (hoveredStar.x - offset.x) * scale;
+      const hy = (hoveredStar.y - offset.y) * scale;
+      onSelect(hoveredStar, { x: hx, y: hy });
+      return;
     }
     if (nearest && nearestDist <= CLICK_THRESHOLD) {
       onSelect(nearest, { x, y });
@@ -182,37 +191,44 @@ export default function StarField({ onSelect }: Props) {
       const dy = e.clientY - draggingRef.current.lastY;
       draggingRef.current.lastX = e.clientX;
       draggingRef.current.lastY = e.clientY;
-      const screenW = window.innerWidth;
-      const screenH = window.innerHeight;
       const newOffset = {
         x: offset.x - dx / scale,
         y: offset.y - dy / scale,
       };
-      setOffset(clampOffset(newOffset, scale, screenW, screenH));
+      setOffset(newOffset);
       return;
     }
-    let nearestId: number | null = null;
+    let nearest: Star | null = null;
     let nearestDist = Infinity;
-    for (const s of stars) {
-      const sx = (s.x - offset.x) * scale;
-      const sy = (s.y - offset.y) * scale;
-      const dx = sx - x;
-      const dy = sy - y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearestId = s.id;
+    const wx = x / scale + offset.x;
+    const wy = y / scale + offset.y;
+    const cx = Math.floor(wx / TILE_SIZE);
+    const cy = Math.floor(wy / TILE_SIZE);
+    for (let ty = cy - 1; ty <= cy + 1; ty++) {
+      for (let tx = cx - 1; tx <= cx + 1; tx++) {
+        const tileStars = generateTileStars(tx, ty);
+        for (const s of tileStars) {
+          const sx = (s.x - offset.x) * scale;
+          const sy = (s.y - offset.y) * scale;
+          const dx = sx - x;
+          const dy = sy - y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < nearestDist) {
+            nearestDist = dist;
+            nearest = s;
+          }
+        }
       }
     }
-    if (nearestId !== null && nearestDist <= HOVER_THRESHOLD) {
-      if (hoveredId !== nearestId) setHoveredId(nearestId);
-    } else if (hoveredId !== null) {
-      setHoveredId(null);
+    if (nearest && nearestDist <= HOVER_THRESHOLD) {
+      setHoveredStar(nearest);
+    } else {
+      if (hoveredStar) setHoveredStar(null);
     }
   };
 
   const handleMouseLeave = () => {
-    if (hoveredId !== null) setHoveredId(null);
+    if (hoveredStar) setHoveredStar(null);
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -229,10 +245,8 @@ export default function StarField({ onSelect }: Props) {
       x: wx - x / targetScale,
       y: wy - y / targetScale,
     };
-    const screenW = window.innerWidth;
-    const screenH = window.innerHeight;
     setScale(targetScale);
-    setOffset(clampOffset(newOffset, targetScale, screenW, screenH));
+    setOffset(newOffset);
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -249,14 +263,7 @@ export default function StarField({ onSelect }: Props) {
     return Math.max(min, Math.min(max, value));
   }
 
-  function clampOffset(off: { x: number; y: number }, sc: number, screenW: number, screenH: number) {
-    const maxX = Math.max(0, WORLD_SIZE - screenW / sc);
-    const maxY = Math.max(0, WORLD_SIZE - screenH / sc);
-    return {
-      x: clamp(off.x, 0, maxX),
-      y: clamp(off.y, 0, maxY),
-    };
-  }
+  // No offset clamping: allow infinite pan and procedural generation
 
   const zoomByButtons = (direction: 1 | -1) => {
     const screenW = window.innerWidth;
@@ -269,7 +276,7 @@ export default function StarField({ onSelect }: Props) {
       y: wy - screenH / (2 * targetScale),
     };
     setScale(targetScale);
-    setOffset(clampOffset(newOffset, targetScale, screenW, screenH));
+    setOffset(newOffset);
   };
 
   return (

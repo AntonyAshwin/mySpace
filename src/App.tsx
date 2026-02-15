@@ -2,6 +2,8 @@ import React, { useCallback, useMemo, useState } from 'react';
 import StarField, { Star } from './components/StarField';
 import Modal from './components/Modal';
 import Planet3D from './components/Planet3D';
+import PlanetInfo from './components/PlanetInfo';
+import { generatePlanet } from './lib/procedural';
 
 type Point = { x: number; y: number };
 
@@ -15,6 +17,7 @@ export default function App() {
   }, []);
 
   const seed = useMemo(() => selectedStar?.seed ?? Math.random() * 1e9, [selectedStar]);
+  const params = useMemo(() => generatePlanet(seed), [seed]);
 
   const onRequestExit = useCallback(() => {
     setModalOpen(false);
@@ -28,7 +31,8 @@ export default function App() {
       </div>
       {modalOpen && (
         <Modal onClose={onRequestExit}>
-          <Planet3D seed={seed} size={Math.min(window.innerWidth, window.innerHeight) * 0.72} />
+          <Planet3D seed={seed} params={params} size={Math.min(window.innerWidth, window.innerHeight) * 0.72} />
+          <PlanetInfo seed={seed} params={params} />
         </Modal>
       )}
     </div>

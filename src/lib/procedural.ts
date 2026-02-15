@@ -15,6 +15,14 @@ export type PlanetParams = {
   type: PlanetType;
 };
 
+export type PlanetFacts = {
+  name: string;
+  type: PlanetType;
+  radiusKm: number;
+  avgTempK: number;
+  elements: [string, string, string];
+};
+
 export function generatePlanet(seed: number): PlanetParams {
   const rng = mulberry32(seed);
   const type: PlanetType = rng() < 0.8 ? 'gaseous' : 'rocky';
@@ -28,6 +36,53 @@ export function generatePlanet(seed: number): PlanetParams {
   const hasRings = rng() < 0.35;
   const ringTilt = randRange(rng, -35, 35);
   return { hue, saturation, lightness, banding, noise, clouds, ocean, hasRings, ringTilt, type };
+}
+
+export function generatePlanetName(seed: number): string {
+  const rng = mulberry32(seed);
+  const syllables = ['ar', 'on', 'is', 'el', 'um', 'ta', 'ra', 'qu', 'ex', 'vi', 'lo', 'an', 'or', 'un', 'ze'];
+  const part = () => syllables[Math.floor(rng() * syllables.length)];
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  return cap(part() + part()) + '-' + cap(part() + part());
+}
+
+export function generatePlanetFacts(seed: number, params: PlanetParams): PlanetFacts {
+  const rng = mulberry32(seed);
+  const name = generatePlanetName(seed);
+  // Size (radius) based on type
+  const earthRadiusKm = 6371;
+  const radiusEarth = params.type === 'rocky' ? randRange(rng, 0.3, 2.5) : randRange(rng, 3.0, 14.0);
+  const radiusKm = Math.round(radiusEarth * earthRadiusKm);
+  // Temperature influenced by hue and type
+  // cooler hues (blue) -> lower temp; warmer hues (red/yellow) -> higher temp
+  const hueNorm = ((params.hue % 360) / 360);
+  const baseTemp = params.type === 'gaseous' ? randRange(rng, 90, 350) : randRange(rng, 150, 800);
+  const hueAdjust = (hueNorm < 0.5 ? (0.5 - hueNorm) * -120 : (hueNorm - 0.5) * 120); // blue-ish reduce, red-ish increase
+  const avgTempK = Math.max(50, Math.round(baseTemp + hueAdjust));
+
+  // Elements matching appearance
+  let elements: [string, string, string];
+  if (params.type === 'gaseous') {
+    if (params.hue >= 180 && params.hue <= 260) {
+      elements = ['Hydrogen', 'Helium', 'Methane'];
+    } else if (params.hue >= 40 && params.hue <= 80) {
+      elements = ['Hydrogen', 'Helium', 'Ammonia'];
+    } else {
+      elements = ['Hydrogen', 'Helium', rng() < 0.5 ? 'Water Vapor' : 'Carbon Monoxide'];
+    }
+  } else {
+    if (params.hue < 60) {
+      elements = ['Iron', 'Sulfur', 'Oxygen']; // reddish/yellowish
+    } else if (params.hue < 180) {
+      elements = ['Silicon', 'Magnesium', 'Oxygen']; // greenish terrains
+    } else if (params.hue < 300) {
+      elements = ['Silicon', 'Calcium', 'Oxygen']; // bluish/grey rocky
+    } else {
+      elements = ['Silicon', 'Aluminum', 'Oxygen'];
+    }
+  }
+
+  return { name, type: params.type, radiusKm, avgTempK, elements };
 }
 
 // Simple 2D value noise using a hashed grid

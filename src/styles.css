@@ -55,6 +55,27 @@ html, body, #root {
   place-items: center;
 }
 
+.planet-info {
+  margin-top: 12px;
+  color: #ddd;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+.planet-name {
+  font-weight: 600;
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+.planet-meta {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 12px;
+  font-size: 13px;
+}
+.planet-elements {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
 .hint {
   margin-top: 8px;
   text-align: center;

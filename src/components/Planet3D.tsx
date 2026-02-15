@@ -6,9 +6,10 @@ import { mulberry32, randRange } from '../lib/random';
 type Props = {
   seed: number;
   size?: number; // canvas size in CSS px for renderer
+  params?: import('../lib/procedural').PlanetParams;
 };
 
-export default function Planet3D({ seed, size = 560 }: Props) {
+export default function Planet3D({ seed, size = 560, params: injectedParams }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
@@ -36,7 +37,7 @@ export default function Planet3D({ seed, size = 560 }: Props) {
     scene.add(dir);
 
     // Planet textures
-    const params = generatePlanet(seed);
+    const params = injectedParams ?? generatePlanet(seed);
     const texSize = Math.floor(Math.min(width, height) * 2); // bigger texture to avoid artifacts
     const { colorCanvas, bumpCanvas } = renderPlanetTextures(seed, params, texSize);
     const colorTex = new THREE.CanvasTexture(colorCanvas);

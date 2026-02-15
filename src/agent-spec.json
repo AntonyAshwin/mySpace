@@ -21,6 +21,7 @@
     "zoomSpeed": 0.12,
     "starsPerTile": 80,
     "tileSize": 800,
+    "dragClickCancelThresholdPx": 4,
     "zoomDurationMs": 250,
     "planet": {
       "ringChance": 0.35,

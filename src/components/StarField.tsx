@@ -26,6 +26,7 @@ const MAX_ZOOM = (spec?.tunables?.maxZoom as number) ?? 4.0;
 const ZOOM_SPEED = (spec?.tunables?.zoomSpeed as number) ?? 0.12; // wheel zoom sensitivity
 const TILE_SIZE = (spec?.tunables?.tileSize as number) ?? 800; // world units per tile
 const STARS_PER_TILE = (spec?.tunables?.starsPerTile as number) ?? 80;
+const DRAG_CLICK_CANCEL_THRESHOLD = (spec?.tunables?.dragClickCancelThresholdPx as number) ?? 4; // px movement to treat as drag
 
 export default function StarField({ onSelect }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -34,7 +35,7 @@ export default function StarField({ onSelect }: Props) {
   const [hoveredStar, setHoveredStar] = useState<Star | null>(null);
   const [scale, setScale] = useState<number>(MIN_ZOOM);
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const draggingRef = useRef<{ dragging: boolean; lastX: number; lastY: number }>({ dragging: false, lastX: 0, lastY: 0 });
+  const draggingRef = useRef<{ dragging: boolean; lastX: number; lastY: number; startX: number; startY: number; moved: boolean }>({ dragging: false, lastX: 0, lastY: 0, startX: 0, startY: 0, moved: false });
 
   // Procedural infinite stars: generate per tile deterministically
   const tileSeed = (tx: number, ty: number) => ((STARFIELD_SEED ^ (tx * 0x9e3779b1) ^ (ty * 0x85ebca77)) >>> 0);
@@ -145,6 +146,11 @@ export default function StarField({ onSelect }: Props) {
   }, [hoveredStar, scale, offset]);
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // If this pointer moved enough, it's a pan, not a click
+    if (draggingRef.current.moved) {
+      draggingRef.current.moved = false; // reset for next interaction
+      return;
+    }
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
@@ -191,6 +197,11 @@ export default function StarField({ onSelect }: Props) {
       const dy = e.clientY - draggingRef.current.lastY;
       draggingRef.current.lastX = e.clientX;
       draggingRef.current.lastY = e.clientY;
+      const totalDx = e.clientX - draggingRef.current.startX;
+      const totalDy = e.clientY - draggingRef.current.startY;
+      if (Math.abs(totalDx) + Math.abs(totalDy) >= DRAG_CLICK_CANCEL_THRESHOLD) {
+        draggingRef.current.moved = true;
+      }
       const newOffset = {
         x: offset.x - dx / scale,
         y: offset.y - dy / scale,
@@ -253,6 +264,9 @@ export default function StarField({ onSelect }: Props) {
     draggingRef.current.dragging = true;
     draggingRef.current.lastX = e.clientX;
     draggingRef.current.lastY = e.clientY;
+    draggingRef.current.startX = e.clientX;
+    draggingRef.current.startY = e.clientY;
+    draggingRef.current.moved = false;
   };
 
   const handleMouseUp = () => {
